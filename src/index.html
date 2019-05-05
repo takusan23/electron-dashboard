@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="jp" style="height:100%">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Dashboard</title>
+    <!--Import Google Icon Font　これ httpsにすると動く-->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!--Import materialize.css-->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.98.0/css/materialize.min.css">
+</head>
+
+<body style="height: 100%; width: 100%;">
+    <div style="padding: 20px 60px; height: 100%;">
+        <table style="table-layout: fixed; height: 100%;">
+            <tr>
+                <td>
+                    <div class="col s12 m6" style="height: 100%;">
+                        <div class="card indigo accent-1" style="height: 40%;">
+                            <div class="card-content white-text" style="height: 85%;">
+                                <span class="card-title"><i class="material-icons left">dashboard</i>ダッシュボード</span>
+                                <!-- 時計を真ん中らへんに置く -->
+                                <div style="text-align:center">
+                                    <h4 id="today"></h4>
+                                    <h4 id="time"></h4>
+                                </div>
+
+                            </div>
+                            <div class="card-action">
+                            </div>
+                        </div>
+                        <div class="card grey" style="height: 50%;">
+                            <div class="card-content white-text" style="height: 85%;">
+                                <span class="card-title"><i class="material-icons left">desktop_windows</i>情報</span>
+                                <div>
+                                    <p id="pc_name"></p>
+                                    <p id="pc_os"></p>
+                                    <p id="pc_cpu"></p>
+                                    <p id="pc_ram"></p>
+                                    <p id="pc_gpu"></p>
+                                    <p id="pc_use"></p>
+                                    <p id="pc_temp"></p>
+                                </div>
+                            </div>
+                            <div class="card-action">
+                            </div>
+                        </div>
+                </td>
+                <td>
+                    <div class="col s12 m6" style="height: 100%;">
+                        <div class="card red accent-1" style="height: 100%;">
+                            <div class="card-content white-text" style="height: 85%;">
+                                <span class="card-title"><i class="material-icons left">wb_sunny</i>お天気</span>
+                                <br>
+                                <h5 id="name"></h5>
+                                <h5 id="icon"></h5>
+                                <h5 id="weather"></h5>
+                                <h5 id="temp"></h5>
+                                <h5 id="temp_min"></h5>
+                                <h5 id="temp_max"></h5>
+                                <h5 id="rain"></h5>
+                            </div>
+                            <div class="card-action"">
+                                <a class=" waves-effect waves-light btn red lighten-3" onclick="showWeatherSetting()">
+                                <i class="material-icons left">settings</i>天気予報の設定</a>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div id="train_card" class="col s12 m6" style="height: 100%;">
+                        <div class="card  green lighten-1" style="height: 100%;">
+                            <div class="card-content white-text" style="height: 85%;">
+                                <span class="card-title"><i class="material-icons left">train</i>最寄りの時刻表</span>
+                                <br>
+                                <h5 id="station_name"></h5>
+                                <div id="train_text" style="height: 70% ;overflow: scroll;">
+                                    <h5 id="train_up" style="height: 100px"></h5>
+                                </div>
+                            </div>
+                            <div class="card-action"">
+                             <a class=" waves-effect waves-light btn green lighten-3" onclick="showTrainSetting()">
+                                <i class="material-icons left">settings</i>時刻表の設定</a>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+
+            </tr>
+        </table>
+    </div>
+</body>
+
+<script>
+    const electron = require('electron');
+    const BrowserWindow = electron.remote.BrowserWindow;
+    const dialog = electron.remote.dialog;
+    const Menu = electron.remote.Menu;
+    var Crawler = require('crawler');
+    const os = require('os');
+    const si = require('systeminformation');
+
+    var weatherSetting;
+    var trainSetting;
+
+    //読み込み終わったら呼ばれる
+    window.onload = function () {
+        timer();
+        callWeatherAPI();
+        loadTimeTable();
+        getPCInfo();
+    }
+
+    //時計
+    function showTime() {
+        var date = new Date();
+        var today = (date.getMonth() + 1) + '月' + date.getDate() + '日' + ' ' + toDay();
+        var time = date.getHours() + '時' + date.getMinutes() + '分' + date.getSeconds() + '秒';
+        //入れる
+        document.getElementById('today').innerText = today;
+        document.getElementById('time').innerText = time;
+    }
+
+    //setInterval
+    function timer() {
+        setInterval(function () { showTime() }, 10);
+        setInterval(function () { setCPUInfo() }, 1000);
+    }
+
+    //曜日返す
+    function toDay() {
+        var date = new Date();
+        var dates = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
+        return dates[date.getDay()];
+    }
+
+    //お天気設定画面
+    function showWeatherSetting() {
+        //新しいウィンドウ
+        weatherSetting = new BrowserWindow({
+            width: 800,
+            height: 600,
+            webPreferences: {
+                nodeIntegration: true
+            },
+        })
+        weatherSetting.setMenu(null)
+        weatherSetting.loadURL('file://' + __dirname + '/weather/settings.html')
+        //ウィンドウを閉じるイベント処理
+        weatherSetting.on('closed', () => {
+            weatherSetting = null;
+        })
+    }
+
+    //お天気JSON
+    function callWeatherAPI() {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "http://api.openweathermap.org/data/2.5/weather?q=" + localStorage.getItem('city') + "&units=metric&appid=" + localStorage.getItem('apikey'), true);
+        xhr.onload = function (e) {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    setWeatherLayout(xhr.responseText);
+                } else {
+                    //設定が終わってないときはエラー出さない
+                    if (localStorage.getItem('city') == null && localStorage.getItem('apikey') == null) {
+                        document.getElementById('name').innerText = '天気の設定が終わっていません。';
+                    } else {
+                        //失敗エラー（設定がおかしい等）
+                        dialog.showErrorBox('天気予報APIを利用できませんでした', xhr.statusText);
+                    }
+
+                }
+            }
+        };
+        xhr.send();
+    }
+
+    //お天気レイアウト
+    function setWeatherLayout(response) {
+        //JSON
+        var object = JSON.parse(response);
+
+        document.getElementById('name').innerText = '場所 : ' + object.name;
+        document.getElementById('weather').innerText = '天気 : ' + object.weather[0].main + ' (' + object.weather[0].description + ')';
+        document.getElementById('temp').innerText = '気温 : ' + object.main.temp + ' 度';
+        document.getElementById('temp_min').innerText = '最低気温 : ' + object.main.temp_min + ' 度';
+        document.getElementById('temp_max').innerText = '最高気温 : ' + object.main.temp_max + ' 度';
+        document.getElementById('icon').innerHTML = '<img src="http://openweathermap.org/img/w/' + object.weather[0].icon + '.png">';
+
+    }
+
+
+    //時刻表
+    function loadTimeTable() {
+        //設定してないときは設定してねメッセージ出す
+        if (localStorage.getItem('train_url') == null) {
+            document.getElementById('station_name').innerText = '最寄り駅の設定が終わっていません。';
+        } else {
+            //APIないのでスクレイピングするしか無い
+            var date = new Date();
+            var c = new Crawler({
+                maxConnections: 10,
+                callback: function (error, res, done) {
+                    if (error) {
+                        console.log(error);
+                    } else {
+                        var $ = res.$;
+                        //今の時間
+                        let time = date.getHours();
+                        //24時間目はhh_0ではなくhh_24なのでなおす
+                        if (time == 0) {
+                            time = '#hh_24';
+                        } else {
+                            time = '#hh_' + time;
+                        }
+                        let searchResult = $(time).html();
+                        let tilte = $('#main > div > div > h1').text();
+                        let hiragana = $('#main > div > div > span').text();
+                        let houmen = $('#mdStaLineDia > div > ul > li > h3').text();
+                        //タイトル
+                        document.getElementById('station_name').innerHTML = tilte + ' (' + hiragana + ') ' + '<br>' + houmen;
+                        //いらない要素を消す（主にclass）
+                        while (searchResult.match('</dt><dd class="trainFor">')) {
+                            searchResult = searchResult.replace('</dt><dd class="trainFor">', ' / ');
+                        }
+                        while (searchResult.match('</dt><dd class="trainType">')) {
+                            searchResult = searchResult.replace('</dt><dd class="trainType">', ' / ');
+                        }
+                        //URLを補充する（https://trainsit.yahoo～がない）
+                        while (searchResult.match('<a href="/station/time/train/')) {
+                            searchResult = searchResult.replace('<a href="/station/time/train/', '<a target="_blank" href="https://transit.yahoo.co.jp/station/time/train/');
+                        }
+                        //最初の文字（7時だと7）を消して付け直す
+                        searchResult = searchResult.replace(date.getHours(), date.getHours() + '時');
+                        document.getElementById('train_up').innerHTML = searchResult;
+                    }
+                    done();
+                }
+            });
+            c.queue([localStorage.getItem('train_url')]);
+        }
+
+    }
+
+    //時刻表設定画面
+    function showTrainSetting() {
+        //新しいウィンドウ
+        trainSetting = new BrowserWindow({
+            width: 800,
+            height: 600,
+            webPreferences: {
+                nodeIntegration: true
+            },
+        })
+        trainSetting.setMenu(null)
+        trainSetting.loadURL('file://' + __dirname + '/train/settings.html')
+        //ウィンドウを閉じるイベント処理
+        trainSetting.on('closed', () => {
+            trainSetting = null;
+        })
+    }
+
+    //情報取得
+    function getPCInfo() {
+        //システム情報返してくれるパッケージみっけた
+        si.cpu(function (data) {
+            var cpu_name = data.manufacturer + data.brand + ' ' + data.speed + 'GHz';
+            document.getElementById('pc_cpu').innerText = 'CPU : ' + cpu_name;
+        });
+        si.mem(function (data) {
+            var gb = Math.round(data.total / 1073741824) + ' GB';
+            document.getElementById('pc_ram').innerText = 'メモリ : ' + gb;
+        });
+        si.graphics(function (data) {
+            //複数あるっぽい？回す
+            for (var i = 0; i < data.controllers.length; i++) {
+                document.getElementById('pc_gpu').innerHTML = 'GPU : ' + data.controllers[i].model + '<br>' + document.getElementById('pc_gpu').innerHTML;
+            }
+        });
+        si.osInfo(function (data) {
+            var platform = data.platform + ' ' + data.release;
+            document.getElementById('pc_name').innerText = '名前 : ' + data.hostname;
+            document.getElementById('pc_os').innerText = 'OS : ' + platform;
+
+        });
+    }
+
+    //CPU使用率？
+    function setCPUInfo() {
+        si.currentLoad(function (data) {
+            var use = data.currentload;
+            document.getElementById('pc_use').innerText = 'CPU使用率 : ' + Math.round(use) + ' %';
+
+        });
+        si.cpuTemperature(function (data) {
+            var temp = data.main;
+            document.getElementById('pc_temp').innerText = 'CPU温度 : ' + temp + ' 度';
+
+        });
+    }
+
+
+</script>
+
+</html>

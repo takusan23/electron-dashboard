@@ -1,0 +1,20 @@
+{
+  "name": "electron-dashbord",
+  "version": "1.0.0",
+  "description": "",
+  "main": "./src/main.js", 
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "takusan_23",
+  "license": "Apatch 2.0",
+  "devDependencies": {
+    "crawler": "^1.2.1",
+    "electron": "^5.0.1"
+  },
+  "dependencies": {
+    "crawler": "^1.2.1",
+    "systeminformation": "^4.1.6"
+  }
+}

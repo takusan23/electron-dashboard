@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="jp">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>時刻表の設定</title>
+    <!--Import Google Icon Font　これ httpsにすると動く-->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!--Import materialize.css-->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.98.0/css/materialize.min.css">
+</head>
+
+<body>
+
+    <body>
+        <div style="padding: 20px 60px;">
+            <div class="col s12 m6">
+                <div class="card green lighten-1">
+                    <div class="card-content white-text">
+                        <span class="card-title">設定画面</span>
+
+                        <div class="row;width:auto">
+                            <div class="col s12 m5">
+                                <div class="card-panel green lighten-2">
+                                    <span class="white-text">
+                                        <br>
+                                        Yahoo路線情報のHTMLをスクレイピングして実装してます
+                                        <div class="row">
+                                            Yahoo路線情報の時刻表URLを入力してね
+                                            <div class="input-field col s12">
+                                                <input placeholder="train_url" value="" id="train_url" type="text"
+                                                    class="validate">
+                                            </div>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-action">
+                        <a class="waves-effect waves-light btn green lighten-3" id="start_button"
+                            onclick="closeWindow()"><i class="material-icons left">arrow_back</i>戻る</a></div>
+                </div>
+            </div>
+        </div>
+    </body>
+
+    <script>
+        const remote = require('electron').remote;
+
+        window.onload = function () {
+            loadSettings();
+        }
+
+        //ウィンドウを閉じる
+        function closeWindow() {
+            valueSave();
+            var window = remote.BrowserWindow.getFocusedWindow();
+            window.close();
+        }
+
+        //設定保存
+        function valueSave() {
+            var appid = document.getElementById('train_url').value;
+            localStorage.setItem('train_url', appid);
+        }
+
+        //設定内容を表示する
+        function loadSettings() {
+            document.getElementById('train_url').value = localStorage.getItem('train_url');
+        }
+
+    </script>
+
+</html>
