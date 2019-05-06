@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.98.0/css/materialize.min.css">
 </head>
 
-<body style="height: 100%; width: 100%;">
+<body style="height: 100%; width: 200%;">
     <div style="padding: 20px 60px; height: 100%;">
         <table style="table-layout: fixed; height: 100%;">
             <tr>
@@ -21,7 +21,7 @@
                         <div class="card indigo accent-1" style="height: 40%;">
                             <div class="card-content white-text" style="height: 85%;">
                                 <span class="card-title"><i class="material-icons left">dashboard</i>ダッシュボード</span>
-                                <!-- 時計を真ん中らへんに置く -->
+                                <!-- 時計を真ん中に置く -->
                                 <div style="text-align:center">
                                     <h4 id="today"></h4>
                                     <h4 id="time"></h4>
@@ -34,15 +34,13 @@
                         <div class="card grey" style="height: 50%;">
                             <div class="card-content white-text" style="height: 85%;">
                                 <span class="card-title"><i class="material-icons left">desktop_windows</i>情報</span>
-                                <div>
-                                    <p id="pc_name"></p>
-                                    <p id="pc_os"></p>
-                                    <p id="pc_cpu"></p>
-                                    <p id="pc_ram"></p>
-                                    <p id="pc_gpu"></p>
-                                    <p id="pc_use"></p>
-                                    <p id="pc_temp"></p>
-                                </div>
+                                <p id="pc_name"></p>
+                                <p id="pc_os"></p>
+                                <p id="pc_cpu"></p>
+                                <p id="pc_ram"></p>
+                                <p id="pc_gpu"></p>
+                                <p id="pc_use"></p>
+                                <p id="pc_temp"></p>
                             </div>
                             <div class="card-action">
                             </div>
@@ -87,6 +85,25 @@
                         </div>
                     </div>
                 </td>
+                <td>
+                    <div id="mastodon_card" class="col s12 m6" style="height: 100%;">
+                        <div class="card  blue accent-1" style="height: 100%;">
+                            <div class="card-content white-text" style="height: 85%;">
+                                <span class="card-title"><i class="material-icons left">timelines</i>マストドン</span>
+                                <br>
+                                <h5 id="tl_name"></h5>
+                                <div id="timeline_div" style="height: 90% ;overflow: scroll;">
+                                    <div id="timeline" style="height: 100px"></div>
+                                </div>
+                            </div>
+                            <div class="card-action"">
+                                             <a class=" waves-effect waves-light btn blue lighten-3"
+                                onclick="showMastodonSetting()">
+                                <i class="material-icons left">settings</i>タイムラインの設定</a>
+                            </div>
+                        </div>
+                    </div>
+                </td>
 
             </tr>
         </table>
@@ -101,9 +118,13 @@
     var Crawler = require('crawler');
     const os = require('os');
     const si = require('systeminformation');
+    const { shell } = require('electron').remote;
+    const exec = require('child_process').exec;
+    const Encoding = require('encoding-japanese');
 
     var weatherSetting;
     var trainSetting;
+    var mastodonSetting;
 
     //読み込み終わったら呼ばれる
     window.onload = function () {
@@ -111,6 +132,10 @@
         callWeatherAPI();
         loadTimeTable();
         getPCInfo();
+        notMastodon();
+        getMastodonTL();
+        streamingApi();
+        setMastodonDMTerminal();
     }
 
     //時計
@@ -127,6 +152,8 @@
     function timer() {
         setInterval(function () { showTime() }, 10);
         setInterval(function () { setCPUInfo() }, 1000);
+        setInterval(function () { callWeatherAPI() }, 600000); //10分ごとに叩く
+        setInterval(function () { loadTimeTable() }, 600000);  //10分ごとに叩く
     }
 
     //曜日返す
@@ -228,10 +255,12 @@
                         while (searchResult.match('</dt><dd class="trainType">')) {
                             searchResult = searchResult.replace('</dt><dd class="trainType">', ' / ');
                         }
-                        //URLを補充する（https://trainsit.yahoo～がない）
+                        //URLを補充してブラウザで開くようにする（https://trainsit.yahoo～がない）
                         while (searchResult.match('<a href="/station/time/train/')) {
-                            searchResult = searchResult.replace('<a href="/station/time/train/', '<a target="_blank" href="https://transit.yahoo.co.jp/station/time/train/');
+                            searchResult = searchResult.replace('<a href="/station/time/train/', `<a href="./index.html" onclick="lunchBrowser('https://transit.yahoo.co.jp/station/time/train/`);
+                            searchResult = searchResult.replace('tab=time">', `tab=time')">`);
                         }
+                        //console.log(searchResult)
                         //最初の文字（7時だと7）を消して付け直す
                         searchResult = searchResult.replace(date.getHours(), date.getHours() + '時');
                         document.getElementById('train_up').innerHTML = searchResult;
@@ -242,6 +271,13 @@
             c.queue([localStorage.getItem('train_url')]);
         }
 
+    }
+
+    //Mastodon見ない人向け設定
+    function notMastodon() {
+        if (localStorage.getItem('not_mastodon').match('true')) {
+            document.getElementById('mastodon_card').innerHTML = '';
+        }
     }
 
     //時刻表設定画面
@@ -296,11 +332,202 @@
         });
         si.cpuTemperature(function (data) {
             var temp = data.main;
-            document.getElementById('pc_temp').innerText = 'CPU温度 : ' + temp + ' 度';
+            document.getElementById('pc_temp').innerText = 'CPU温度 : ' + temp.toFixed(1) + ' 度';
 
         });
     }
 
+    //ブラウザで開く
+    function lunchBrowser(link) {
+        shell.openExternal(link);
+    }
+
+    //マストドン設定画面
+    function showMastodonSetting() {
+        //新しいウィンドウ
+        mastodonSetting = new BrowserWindow({
+            width: 800,
+            height: 600,
+            webPreferences: {
+                nodeIntegration: true
+            },
+        })
+        mastodonSetting.setMenu(null);
+        // mastodonSetting.webContents.openDevTools()
+        mastodonSetting.loadURL('file://' + __dirname + '/mastodon/settings.html');
+        //ウィンドウを閉じるイベント処理
+        mastodonSetting.on('closed', () => {
+            mastodonSetting = null;
+        })
+    }
+
+
+
+    //マストドン起動
+    function getMastodonTL() {
+        var instance = localStorage.getItem('instance');
+        var token = localStorage.getItem('token');
+        var timeline = localStorage.getItem('timeline');
+        //ローカルは&local=trueをつける
+        var url = ``;
+        if (timeline.match('local')) {
+            url = `https://${instance}/api/v1/timelines/public/?limit=40&local=true&access_token=${token}`;
+        } else {
+            url = `https://${instance}/api/v1/timelines/${timeline}/?limit=40&access_token=${token}`;
+        }
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.onload = function (e) {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    var array = JSON.parse(xhr.response);
+                    for (var i = 0; i < array.length; i++) {
+                        setTimeline(array[i], false);
+                    }
+                } else {
+                    //設定が終わってないときはエラー出さない
+                    if (localStorage.getItem('instance') == null && localStorage.getItem('token') == null) {
+                        document.getElementById('tl_name').innerText = '天気の設定が終わっていません。';
+                    } else {
+                        //失敗エラー（設定がおかしい等）
+                        alert(url)
+                        dialog.showErrorBox('タイムライン取得APIを利用できませんでした', xhr.statusText);
+                    }
+                }
+            }
+        };
+        xhr.send();
+    }
+
+    //JSONParse
+    //streaming trueでストリーミングように上から追加するようにします。
+    function setTimeline(object, streaming) {
+        var content = object.content;
+        var display_name = object.account.display_name;
+        var avatar = object.account.avatar;
+        //形
+        var html = `<div class="col s12 m6">
+           <div class="card white">
+             <div class="card-content black-text">
+               <p style="font-size:20px"><img src="${avatar}" height="25" weight="25">${display_name}</p>
+               <p>${content}</p>
+             </div>
+             <div class="card-action">
+             </div>
+           </div>
+         </div>`;
+        //HTML
+        if (streaming) {
+            document.getElementById('timeline').innerHTML = html + document.getElementById('timeline').innerHTML;
+        } else {
+            document.getElementById('timeline').innerHTML = document.getElementById('timeline').innerHTML + html;
+        }
+    }
+
+    //ストリーミング
+    function streamingApi() {
+        //ストリーミングが有効になっているかチェック（既定有効）
+        if (localStorage.getItem('streaming').match('true')) {
+            var instance = localStorage.getItem('instance');
+            var token = localStorage.getItem('token');
+            var timeline = localStorage.getItem('timeline');
+            var url = '';
+            if (timeline.match('home')) {
+                url = `wss://${instance}/api/v1/streaming/?stream=user&access_token=${token}`;
+            }
+            if (timeline.match('local')) {
+                url = `wss://${instance}/api/v1/streaming/?stream=public:local`;
+            }
+            if (timeline.match('public')) {
+                url = `wss://${instance}/api/v1/streaming/?stream=public`;
+            }
+            // WebSocket 接続を作成する
+            var socket = new WebSocket(url);
+            // 接続を開く
+            socket.addEventListener('open', function (event) {
+                //alert('接続成功')
+            });
+
+            // メッセージを待ち受ける
+            socket.addEventListener('message', function (event) {
+                var object = JSON.parse(event.data);
+                var content = JSON.parse(object.payload);
+                setTimeline(content, true);
+            });
+
+            // エラー
+            socket.addEventListener('error', function (event) {
+                alert('１０秒後に再接続します。');
+                setTimeout(function () {
+                    socket.close();
+                    streamingApi();
+                }, 10000);
+            });
+        }
+    }
+
+    //ダイレクトメッセージでターミナル操作を受け付ける
+    function setMastodonDMTerminal() {
+        if (localStorage.getItem('terminal').match('true')) {
+            var instance = localStorage.getItem('instance');
+            var token = localStorage.getItem('token');
+            var timeline = localStorage.getItem('timeline');
+            var url = `wss://${instance}/api/v1/streaming/?stream=direct&access_token=${token}`;
+            // WebSocket 接続を作成する
+            var socket = new WebSocket(url);
+            // 接続を開く
+            socket.addEventListener('open', function (event) {
+                //alert('接続成功')
+            });
+
+            // メッセージを待ち受ける
+            socket.addEventListener('message', function (event) {
+                var object = JSON.parse(event.data);
+                var content = JSON.parse(object.payload);
+                //TL操作
+                //指定したユーザーのみ操作可能にする
+                var account_id = content.last_status.account.id;
+                if (localStorage.getItem('terminal_id') === String(account_id)) {
+
+                    if (content.last_status.content.match('ターミナル')) {
+                        var toot_id = content.last_status.id;
+                        //正規表現
+                        var text = content.last_status.content.replace(/<("[^"]*"|'[^']*'|[^'">])*>/g, '');
+                        //ターミナルを消す
+                        text = text.replace('ターミナル', '');
+                        //ターミナル操作
+                        exec(text, (err, stdout, stderr) => {
+                            if (err) {
+                                statusPost(text + '\n' + err, toot_id);
+                            } else {
+                                statusPost(text + '\n' + stdout, toot_id);
+                            }
+                        });
+                    }
+                }
+            });
+
+            // エラー
+            socket.addEventListener('error', function (event) {
+                alert('１０秒後に再接続します。');
+                setTimeout(function () {
+                    setMastodonDMTerminal();
+                }, 10000);
+            });
+        }
+    }
+
+    //POST
+    function statusPost(text, id) {
+        var xmlHttpRequest = new XMLHttpRequest();
+        xmlHttpRequest.addEventListener("load", function (event) {
+            // xmlHttpRequest.responseにレスポンスが入っています
+        }, false);
+        xmlHttpRequest.responseType = "json";
+        xmlHttpRequest.open("POST", "https://" + localStorage.getItem('instance') + "/api/v1/statuses?access_token=" + localStorage.getItem('token'));
+        xmlHttpRequest.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+        xmlHttpRequest.send("status=" + encodeURIComponent(text) + "&visibility=direct" + "&in_reply_to_id=" + id);
+    }
 
 </script>
 
